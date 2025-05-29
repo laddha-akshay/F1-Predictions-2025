@@ -4,9 +4,13 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error
+import os
 
 # Enable FastF1 caching
-fastf1.Cache.enable_cache("f1_cache")
+cache_dir = "f1_cache"
+if not os.path.exists(cache_dir):
+    os.makedirs(cache_dir)
+fastf1.Cache.enable_cache(cache_dir)
 
 # Load FastF1 2024 Australian GP race session
 session_2024 = fastf1.get_session(2024, 3, "R")
@@ -35,7 +39,13 @@ driver_mapping = {
 qualifying_2025["DriverCode"] = qualifying_2025["Driver"].map(driver_mapping)
 
 # Merge 2025 Qualifying Data with 2024 Race Data
-merged_data = qualifying_2025.merge(laps_2024, left_on="DriverCode", right_on="Driver")
+# Use a left merge to keep all drivers from qualifying_2025
+merged_data = qualifying_2025.merge(laps_2024, left_on="DriverCode", right_on="Driver", how='left')
+
+# Fill missing 'LapTime (s)' values with a placeholder or calculated value
+# Here, we'll use the mean of existing lap times as a simple placeholder
+mean_lap_time = merged_data["LapTime (s)"].mean()
+merged_data["LapTime (s)"].fillna(mean_lap_time, inplace=True)
 
 # Use only "QualifyingTime (s)" as a feature
 X = merged_data[["QualifyingTime (s)"]]
@@ -61,5 +71,7 @@ print("\n🏁 Predicted 2025 Chinese GP Winner 🏁\n")
 print(qualifying_2025[["Driver", "PredictedRaceTime (s)"]])
 
 # Evaluate Model
-y_pred = model.predict(X_test)
-print(f"\n🔍 Model Error (MAE): {mean_absolute_error(y_test, y_pred):.2f} seconds")
+# Filter out rows with NaN in y_test before calculating MAE
+y_test_filtered = y_test.dropna()
+y_pred_filtered = model.predict(X_test[y_test.notna()])
+print(f"\n🔍 Model Error (MAE): {mean_absolute_error(y_test_filtered, y_pred_filtered):.2f} seconds")
